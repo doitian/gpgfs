@@ -67,7 +67,7 @@ jobs:
           python -m pip install --upgrade twine
           twine check --strict dist/*
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: dist
           path: dist/
@@ -87,7 +87,7 @@ jobs:
     permissions:
       id-token: write # OIDC token used by PyPI trusted publishing, no API token needed
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: dist
           path: dist/
