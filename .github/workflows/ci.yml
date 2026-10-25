@@ -39,8 +39,11 @@ jobs:
       - name: Unit tests
         run: python -m unittest discover -s tests -v
 
+      - name: End-to-end protocol test
+        run: python scripts/protocol_test.py
+
   e2e:
-    name: e2e (windows-latest)
+    name: e2e (drive, windows-latest)
     needs: unit
     runs-on: windows-latest
     timeout-minutes: 30
@@ -53,27 +56,28 @@ jobs:
 
       - uses: ./.github/actions/setup-gpg
 
-      # The WebDAV redirector only exists while the WebClient service runs. On
-      # Windows client the service is installed but stopped; on Server images the
-      # WebDAV-Redirector feature may be missing entirely.
-      - name: Enable the WebDAV redirector
+      # A hosted Windows runner is a Server image where the WebDAV-Redirector feature
+      # needs a reboot before the WebClient service exists, and a job cannot reboot.
+      # Client Windows images and self-hosted runners already have the service, so this
+      # job tests the drive for real there and skips with a warning elsewhere.
+      - name: Check the WebDAV redirector
+        id: redirector
         shell: pwsh
         run: |
           $service = Get-Service WebClient -ErrorAction SilentlyContinue
           if (-not $service) {
-            Write-Host 'WebClient service missing, installing the WebDAV Redirector feature'
-            if (Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue) {
-              Install-WindowsFeature -Name WebDAV-Redirector -Restart:$false | Format-List
-            } else {
-              Enable-WindowsOptionalFeature -Online -FeatureName WebDAV-Redirector -All -NoRestart
-            }
+            Write-Host "::warning title=Drive test skipped::This runner has no WebClient service; installing WebDAV-Redirector requires a reboot."
+            "available=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            exit 0
           }
 
           Set-Service WebClient -StartupType Manual
           Start-Service WebClient
+          "available=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Get-Service WebClient | Format-Table Name, Status, StartType
 
       - name: Environment check
+        if: steps.redirector.outputs.available == 'true'
         shell: pwsh
         run: |
           # "net use" exits non-zero when no mapping exists, so it must not be the
@@ -82,6 +86,7 @@ jobs:
           python -m gpgfs doctor
 
       - name: End-to-end drive test
+        if: steps.redirector.outputs.available == 'true'
         shell: pwsh
         env:
           GPGFS_CI_PASSPHRASE: ci-test-passphrase
@@ -95,5 +100,7 @@ jobs:
         run: |
           net use
           sc.exe query webclient
-          Get-ChildItem C:\vault -Force -Recurse | Select-Object FullName, Length
+          if (Test-Path C:\vault) {
+            Get-ChildItem C:\vault -Force -Recurse | Select-Object FullName, Length
+          }
           exit 0

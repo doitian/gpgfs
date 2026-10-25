@@ -177,12 +177,19 @@ python -m unittest discover -s tests -v
 python -m gpgfs serve D:\vault --port 8899 -v
 curl -X PROPFIND -H "Depth: 1" http://127.0.0.1:8899/
 
+# Protocol end to end: starts `gpgfs serve` and drives it over HTTP (any platform)
+python scripts\protocol_test.py
+
 # End to end: server + drive mapping + a full round of file operations in one process
 python scripts\e2e_test.py --vault D:\vault --big-mb 2
 
 # Test an already mounted drive (runs the real file API against it)
 python scripts\smoke_drive.py Z:
 ```
+
+CI runs the unit tests and the protocol test on Ubuntu and Windows. The drive test needs
+the Windows WebDAV redirector, which hosted Server runners only get after a reboot, so it
+runs where the WebClient service already exists (client Windows or self-hosted).
 
 ## Repository layout
 
@@ -198,6 +205,7 @@ gpgfs/
 │  └─ cli.py         command line
 ├─ scripts/
 │  ├─ e2e_test.py    end to end: server + drive + file operations
+│  ├─ protocol_test.py end to end over HTTP, no drive letter needed
 │  └─ smoke_drive.py exercise the real file API on a mounted drive
 └─ tests/test_gpgfs.py
 ```
