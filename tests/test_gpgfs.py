@@ -564,8 +564,9 @@ class UnmapDriveTest(unittest.TestCase):
 
         release = threading.Event()
         started = time.monotonic()
-        with mock.patch.object(self.winmount, "_remote_of",
-                               side_effect=lambda drive: release.wait(30)), \
+        with mock.patch.object(self.winmount, "IS_WINDOWS", True), \
+                mock.patch.object(self.winmount, "_remote_of",
+                                  side_effect=lambda drive: release.wait(30)), \
                 mock.patch.object(self.winmount, "_cancel_connection", return_value=True):
             try:
                 result = self.winmount.unmap_drive("Z:", wait=0.1, timeout=0.2)
@@ -579,8 +580,9 @@ class UnmapDriveTest(unittest.TestCase):
 
         release = threading.Event()
         started = time.monotonic()
-        with mock.patch.object(self.winmount, "_cancel_connection",
-                               side_effect=lambda drive: release.wait(30)), \
+        with mock.patch.object(self.winmount, "IS_WINDOWS", True), \
+                mock.patch.object(self.winmount, "_cancel_connection",
+                                  side_effect=lambda drive: release.wait(30)), \
                 mock.patch.object(self.winmount, "_net_delete", return_value=True), \
                 mock.patch.object(self.winmount, "_is_mapped", return_value=False):
             try:
@@ -588,6 +590,10 @@ class UnmapDriveTest(unittest.TestCase):
             finally:
                 release.set()
         self.assertLess(time.monotonic() - started, 10)
+
+    def test_unmap_is_a_no_op_off_windows(self) -> None:
+        with mock.patch.object(self.winmount, "IS_WINDOWS", False):
+            self.assertFalse(self.winmount.unmap_drive("Z:"))
 
 
 if __name__ == "__main__":
