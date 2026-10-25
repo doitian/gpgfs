@@ -118,6 +118,20 @@ The only external dependency is **gpg** (GnuPG 2.1+ or Gpg4win).
 `doctor` searches PATH, the registry and Scoop for a gpg whose **key store actually works**
 (important when both Gpg4win and an MSYS2 gpg are installed).
 
+## Releasing
+
+Tag a commit and push the tag. `.github/workflows/release.yml` checks that the tag matches
+`pyproject.toml` and `gpgfs.__version__`, runs the unit and protocol tests, builds the
+sdist/wheel, and publishes to PyPI with trusted publishing (OIDC, no API token):
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+One-time setup: add a trusted publisher on PyPI for owner `doitian`, repository `gpgfs`,
+workflow `release.yml`, environment `pypi`.
+
 ## Implementation notes
 
 **Path mapping** (`gpgfs/vfs.py`)
