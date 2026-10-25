@@ -1,0 +1,53 @@
+name: Set up gpg
+description: >-
+  Make a usable gpg available on PATH: install gnupg on Linux, on Windows reuse
+  the runner's existing GnuPG or Git for Windows gpg and fall back to gpg4win.
+
+runs:
+  using: composite
+  steps:
+    - name: Install gnupg (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends gnupg
+
+    - name: Locate gpg (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $existing = Get-Command gpg.exe -ErrorAction SilentlyContinue
+        if ($existing) {
+          Write-Host "gpg already on PATH: $($existing.Source)"
+          exit 0
+        }
+
+        $dirs = @(
+          'C:\Program Files\GnuPG\bin',
+          'C:\Program Files (x86)\GnuPG\bin',
+          'C:\Program Files\Gpg4win\bin',
+          'C:\Program Files (x86)\Gpg4win\bin',
+          'C:\Program Files\Git\usr\bin'
+        ) | Where-Object { Test-Path (Join-Path $_ 'gpg.exe') }
+
+        if (-not $dirs) {
+          choco install gpg4win --no-progress -y
+          $dirs = @(
+            'C:\Program Files\GnuPG\bin',
+            'C:\Program Files (x86)\GnuPG\bin'
+          ) | Where-Object { Test-Path (Join-Path $_ 'gpg.exe') }
+        }
+
+        if (-not $dirs) {
+          throw 'gpg.exe not found, and installing gpg4win did not provide it'
+        }
+
+        foreach ($dir in $dirs) {
+          Add-Content -Path $env:GITHUB_PATH -Value $dir
+        }
+        Write-Host "gpg directories: $($dirs -join ', ')"
+
+    - name: Verify gpg
+      shell: bash
+      run: gpg --version

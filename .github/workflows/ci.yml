@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: unit (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: "3.9"
+          - os: ubuntu-latest
+            python: "3.14"
+          - os: windows-latest
+            python: "3.14"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - uses: ./.github/actions/setup-gpg
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+  e2e:
+    name: e2e (windows-latest)
+    needs: unit
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - uses: ./.github/actions/setup-gpg
+
+      # The WebDAV redirector only exists while the WebClient service runs. On
+      # Windows client the service is installed but stopped; on Server images the
+      # WebDAV-Redirector feature may be missing entirely.
+      - name: Enable the WebDAV redirector
+        shell: pwsh
+        run: |
+          $service = Get-Service WebClient -ErrorAction SilentlyContinue
+          if (-not $service) {
+            Write-Host 'WebClient service missing, installing the WebDAV Redirector feature'
+            if (Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue) {
+              Install-WindowsFeature -Name WebDAV-Redirector -Restart:$false | Format-List
+            } else {
+              Enable-WindowsOptionalFeature -Online -FeatureName WebDAV-Redirector -All -NoRestart
+            }
+          }
+
+          Set-Service WebClient -StartupType Manual
+          Start-Service WebClient
+          Get-Service WebClient | Format-Table Name, Status, StartType
+
+      - name: Environment check
+        shell: pwsh
+        run: |
+          # "net use" exits non-zero when no mapping exists, so it must not be the
+          # last command in the step: Actions uses the final exit code.
+          net use
+          python -m gpgfs doctor
+
+      - name: End-to-end drive test
+        shell: pwsh
+        env:
+          GPGFS_CI_PASSPHRASE: ci-test-passphrase
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\vault | Out-Null
+          python scripts\e2e_test.py --vault C:\vault --passphrase $env:GPGFS_CI_PASSPHRASE --big-mb 2 --verbose
+
+      - name: Collect diagnostics on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          net use
+          sc.exe query webclient
+          Get-ChildItem C:\vault -Force -Recurse | Select-Object FullName, Length
+          exit 0
